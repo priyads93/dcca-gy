@@ -22,9 +22,10 @@ RUN make install
 
 COPY certs/ /etc/ssl/certs/
 
+RUN rm -f /root/extensions/dcca_gy/dcca_gy.so
 
 WORKDIR /root/extensions/dcca_gy
-RUN gcc -Wall -fPIC -shared -o dcca_gy.so dcca_gy.c $(pkg-config --cflags --libs freediameter)
+RUN gcc -Wall -fPIC -shared -o dcca_gy.so dcca_gy.c $(pkg-config --cflags --libs freediameter) -I "/usr/include/postgresql" -L "/usr/lib/aarch64-linux-gnu" -lpq
 
 WORKDIR /root
 RUN mkdir -p /etc/freeDiameter
