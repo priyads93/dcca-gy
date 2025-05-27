@@ -1,8 +1,7 @@
 FROM ubuntu:20.04
 LABEL Description="An Ubuntu-based and simple Docker image of freeDiameter"
 
-ENV DEBIAN_FRONTEND=noninteractive
-
+ENV DEBIAN_FRONTEND=noninteractive 
 # Updating the packages
 RUN apt-get update
 # Installing the freeDiameter dependencies

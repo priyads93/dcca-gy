@@ -11,9 +11,22 @@ static int db_connection()
 {
     printf("libpq tutorial\n");
 
+    const char *host = getenv("HOST");
+    const char *port = getenv("PORT");
+    const char *dbUser = getenv("DB_USER");
+    const char *dbName = getenv("DB_NAME");
+
+    if (!host || !port || !dbUser || !dbName) {
+        fprintf(stderr, "One or more required PostgreSQL environment variables are not set.\n");
+        return -1;
+    }
+
     // Connect to the database
     // conninfo is a string of keywords and values separated by spaces.
-    char *conninfo = "dbname=priyads user=priyads host=host.docker.internal port=5432";
+    char conninfo[512];
+    snprintf(conninfo, sizeof(conninfo),
+             "host=%s port=%s user=%s dbname=%s",
+             host, port, dbUser, dbName);
 
     // Create a connection
     PGconn *conn = PQconnectdb(conninfo);

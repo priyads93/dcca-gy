@@ -36,22 +36,46 @@ Ensure you have the following installed:
 - `pkg-config`
 - FreeDiameter and development headers (`libfreediameter-dev`)
 
-# To compile the dcca_gy plugin:
+# Certitifcate creation
 
-gcc -Wall -fPIC -shared \
- -o extensions/dcca_gy/dcca_gy.so \
- extensions/dcca_gy/dcca_gy.c \
- `pkg-config --cflags --libs freediameter`
+- Create self signed certificates with the domain name same as the identity name in free diameter.conf file using the following command.
 
-- This generates the shared object file: extensions/dcca_gy/dcca_gy.so
+```
+sudo openssl req -x509 -newkey rsa:2048 \
+  -keyout <certificatekeyoutlocation>/key.pem \
+  -out  <certificateoutlocation>/cert.pem \
+  -days 365 -nodes \
+  -subj "/CN=<identity_name>"
+```
 
-# FreeDiameter Configuration
+- Add the key and certificate locations in freeDiameter.conf file.
 
-1. Edit the configuration file /etc/freediameter/freeDiameter.conf.
+# To build the docker file:
 
-2. Add the plugin to the LoadExtension list:
-   LoadExtension = "extensions/dcca_gy/dcca_gy.so";
+- Once the certificates are created, we can add the following parameters in freeDiamater.conf file
 
-# Run the FreeDiameter Server
+Realm=<realm_name>
+ListenOn=<server_ip>
+ConnectPeer=<client_identity>
 
-sudo freeDiameterd -c /etc/freediameter/freeDiameter.conf -d
+- We can now build the docker file using the following command 
+
+```
+docker build -t diameter:v1 .
+```
+
+# To run the docker container:
+
+- Create .env file and add the following environment variables,
+
+1. DB_NAME <PostgreSQL DB Name>
+2. DB_USER <PostgreSQL User Name>
+3. HOST <PostgreSQL Host Name>
+4. PORT <PostgreSQL Port Name>
+
+
+- Run the container using the following command
+
+```
+docker run -p 3868:3868 -p 5868:5868 --env-file .env --rm diameter:v1
+```
