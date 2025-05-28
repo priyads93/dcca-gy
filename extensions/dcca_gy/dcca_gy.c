@@ -18,6 +18,7 @@ static int dictionary_lookup(void);
 static char *extractSubscriptionId(struct msg *msg);
 static int extractRequestType(struct msg *msg);
 static int extractRequestAction(struct msg *msg);
+static float get_float_from_json(json_object *parent, const char *key, float default_value);
 
 static json_object *pgresult_to_json(PGresult *res)
 {
@@ -146,6 +147,7 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
     uint32_t requested_action;
     char *subscription_id = NULL;
     float account_balance = 0.0f;
+    float threshold_balance = 0.0f;
     char query[512];
 
     PGconn *conn;
@@ -195,6 +197,16 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
             if (response)
             {
                 printf("Query Result: %s\n", json_object_to_json_string(response));
+                json_object *subscriber_record = json_object_array_get_idx(response, 0);
+                if (subscriber_record == NULL || !json_object_is_type(subscriber_record, json_type_object))
+                {
+                    TRACE_DEBUG(INFO, "Error: No subscriber record found.\n");
+                }
+                else
+                {
+                    account_balance = get_float_from_json(subscriber_record, "u_current_balance", 0.0f);
+                    threshold_balance = get_float_from_json(subscriber_record, "u_thresholds", 0.0f);
+                }
                 json_object_put(response); // Free the JSON object after use
             }
             else
@@ -206,13 +218,12 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
             {
                 PQfinish(conn);
             }
-            account_balance = 0.0f; /* TODO Check Balance via Query and set sufficient balance val*/
-            int chk_balance_result = (account_balance >= 0) ? 1 : 0;
+            int chk_balance_result = (account_balance > threshold_balance) ? 0 : 1;
             val.i32 = chk_balance_result;
             CHECK_FCT_DO(fd_msg_avp_new(dict_avp_cbr, 0, &avp_chk_balance_result), {TRACE_DEBUG(INFO, "Failed to create Check Balance Result AVP")});
             CHECK_FCT(fd_msg_avp_setvalue(avp_chk_balance_result, &val));
 
-            //TODO - Create a new AVP Granted Service Unit to send actual balance
+            //TBC - Create a new AVP Granted Service Unit to send actual balance
 
             break;
 
@@ -458,4 +469,24 @@ static int extractRequestAction(struct msg *msg)
     int val = ahdr->avp_value->i32;
     TRACE_DEBUG(INFO, "Requested-Action value: %d", val);
     return val;
+}
+
+static float get_float_from_json(json_object *parent, const char *key, float default_value)
+{
+    json_object *value_obj = NULL;
+
+    if (!json_object_object_get_ex(parent, key, &value_obj))
+    {
+        TRACE_DEBUG(INFO, "'%s' not found in JSON object.\n", key);
+        return default_value;
+    }
+
+    const char *value_str = json_object_get_string(value_obj);
+    if (value_str == NULL)
+    {
+        TRACE_DEBUG(INFO, "String conversion failed for key '%s'.\n", key);
+        return default_value;
+    }
+
+    return strtof(value_str, NULL);
 }
