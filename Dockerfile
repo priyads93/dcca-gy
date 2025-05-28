@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 LABEL Description="An Ubuntu-based and simple Docker image of freeDiameter"
 
 ENV DEBIAN_FRONTEND=noninteractive 
@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update
 # Installing the freeDiameter dependencies
 RUN apt-get -y install mercurial cmake make gcc g++ bison flex libsctp-dev libgnutls28-dev libgcrypt-dev pkg-config libidn11-dev ssl-cert debhelper fakeroot \
-libpq-dev libmysqlclient-dev libxml2-dev swig python3-dev
+libpq-dev libmysqlclient-dev libxml2-dev swig python3-dev libjson-c-dev valgrind
 # Downloading the code
 
 WORKDIR /root 
@@ -24,7 +24,8 @@ COPY certs/ /etc/ssl/certs/
 RUN rm -f /root/extensions/dcca_gy/dcca_gy.so
 
 WORKDIR /root/extensions/dcca_gy
-RUN gcc -Wall -fPIC -shared -o dcca_gy.so dcca_gy.c $(pkg-config --cflags --libs freediameter) -I "/usr/include/postgresql" -L "/usr/lib/aarch64-linux-gnu" -lpq
+
+RUN gcc -Wall -fPIC -shared -g -o dcca_gy.so dcca_gy.c $(pkg-config --cflags --libs freediameter) -I "/usr/include/postgresql" -L "/usr/lib/aarch64-linux-gnu" -lpq -ljson-c
 
 WORKDIR /root
 RUN mkdir -p /etc/freeDiameter

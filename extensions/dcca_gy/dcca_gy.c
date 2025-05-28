@@ -1,24 +1,91 @@
 #include <freeDiameter/extension.h>
 #include <freeDiameter/libfdproto.h>
 #include <libpq-fe.h>
+#include <json-c/json.h>
 
 #define DCCA_APPLICATION_ID 4
 
 static struct dict_object *dict_avp_result_code = NULL;
 static struct dict_object *dict_cmd_ccr = NULL;
 
-static int db_connection()
+static json_object *pgresult_to_json(PGresult *res)
 {
-    printf("libpq tutorial\n");
+    if (!res)
+        return NULL;
 
+    int nrows = PQntuples(res);
+    int nfields = PQnfields(res);
+
+    json_object *jarray = json_object_new_array();
+
+    for (int i = 0; i < nrows; i++)
+    {
+        json_object *jobj = json_object_new_object();
+        for (int j = 0; j < nfields; j++)
+        {
+            const char *col_name = PQfname(res, j);
+            const char *value = PQgetvalue(res, i, j);
+
+            if (PQgetisnull(res, i, j))
+            {
+                json_object_object_add(jobj, col_name, NULL);
+            }
+            else
+            {
+                json_object *jvalue = json_object_new_string(value);
+                json_object_object_add(jobj, col_name, jvalue);
+            }
+        }
+
+        json_object_array_add(jarray, jobj);
+    }
+    printf("Converted PGresult to JSON successfully\n");
+
+    return jarray;
+}
+
+static json_object *run_query(PGconn *conn, const char *query)
+{
+
+    // Submit the query and retrieve the result
+    PGresult *res = PQexec(conn, query);
+
+    // Check the status of the query result
+    ExecStatusType resStatus = PQresultStatus(res);
+
+    // Convert the status to a string and print it
+    printf("Query Status: %s\n", PQresStatus(resStatus));
+
+    // Check if the query execution was successful
+    if (resStatus != PGRES_TUPLES_OK)
+    {
+        // If not successful, print the error message and finish the connection
+        printf("Error while executing the query: %s\n", PQerrorMessage(conn));
+        PQclear(res);
+        return NULL;
+    }
+
+    // We have successfully executed the query
+    printf("Query Executed Successfully\n");
+
+    // Convert the result to JSON
+    json_object *jarray = pgresult_to_json(res);
+    if(res){
+        PQclear(res);
+    }
+    return jarray;
+}
+
+static PGconn *db_connection()
+{
     const char *host = getenv("HOST");
     const char *port = getenv("PORT");
     const char *dbUser = getenv("DB_USER");
     const char *dbName = getenv("DB_NAME");
 
-    if (!host || !port || !dbUser || !dbName) {
+    if (!host || !port || !dbUser || !dbName)
+    {
         fprintf(stderr, "One or more required PostgreSQL environment variables are not set.\n");
-        return -1;
     }
 
     // Connect to the database
@@ -32,28 +99,22 @@ static int db_connection()
     PGconn *conn = PQconnectdb(conninfo);
 
     // Check if the connection is successful
-    if (PQstatus(conn) != CONNECTION_OK)
+    if (!conn || PQstatus(conn) != CONNECTION_OK)
     {
         // If not successful, print the error message and finish the connection
-        printf("Error while connecting to the database server: %s\n", PQerrorMessage(conn));
+        fprintf(stderr, "Error while connecting to the database server: %s\n", conn ? PQerrorMessage(conn) : "Connection object is NULL");
 
-        // Finish the connection
-        PQfinish(conn);
+        // Free the connection object if it exists
+        if (conn)
+        {
+            PQfinish(conn);
+        }
 
         // Exit the program
-        exit(1);
+        return NULL;
     }
 
-    // We have successfully established a connection to the database server
-    printf("Connection Established\n");
-    printf("Port: %s\n", PQport(conn));
-    printf("Host: %s\n", PQhost(conn));
-    printf("DBName: %s\n", PQdb(conn));
-
-    // Close the connection and free the memory
-    PQfinish(conn);
-
-    return 0;
+    return conn;
 }
 
 // Handler for CCR
@@ -61,6 +122,33 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
                        void *cbdata, enum disp_action *act)
 {
     TRACE_DEBUG(INFO, "CCR received in Gy handler");
+    PGconn *conn;
+    PGresult *response;
+    conn = db_connection();
+    if (!conn)
+    {
+        TRACE_DEBUG(INFO, "Database connection failed");
+        return -1; // Handle connection failure gracefully
+    }
+    TRACE_DEBUG(INFO, "Database connection established successfully");
+    char query[512];
+    snprintf(query, sizeof(query),
+             "SELECT * FROM account_details where subscriberid='%s';",
+             "+91876543212"); // Replace with actual subscriber ID extraction logic
+    response = run_query(conn, query);
+    if (response)
+    {
+        printf("Query Result: %s\n", json_object_to_json_string(response));
+        json_object_put(response); // Free the JSON object after use
+    } else
+    {
+        printf("No results found or query execution failed.\n");
+    }
+
+    if (conn)
+    {
+        PQfinish(conn);
+    }
 
     struct msg *ans = NULL;
     struct avp *avp_result = NULL;
@@ -70,14 +158,14 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
     CHECK_FCT_DO(fd_msg_new_answer_from_req(fd_g_config->cnf_dict, msg, 0), {TRACE_DEBUG(INFO,"Failed to create CCA answer"); return ENOENT; });
     ans = *msg;
 
-    CHECK_FCT_DO(fd_msg_avp_new(dict_avp_result_code, 0, &avp_result), {TRACE_DEBUG(INFO, "Failed to create Result-Code AVP")});
+    CHECK_FCT_DO(fd_msg_avp_new(dict_avp_result_code, 0, &avp_result), {TRACE_DEBUG(INFO, "Failed to create Result-Code AVP"); fd_msg_free(avp_result);});
     val.i32 = result_code;
 
     CHECK_FCT(fd_msg_avp_setvalue(avp_result, &val));
     CHECK_FCT(fd_msg_avp_add(ans, MSG_BRW_LAST_CHILD, avp_result));
 
-    CHECK_FCT_DO(fd_msg_send(&ans, NULL, NULL), {TRACE_DEBUG(INFO, "Failed to send CCA")});
-
+    //no need to transfer seperately already handled by diameter
+    //CHECK_FCT_DO(fd_msg_send(&ans, NULL, NULL), {TRACE_DEBUG(INFO, "Failed to send CCA")});
     TRACE_DEBUG(INFO, "Sent CCA with Result-Code %u", result_code);
 
     return 0;
@@ -87,7 +175,7 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
 int fd_ext_init(void)
 {
     TRACE_DEBUG(INFO, "Initializing Gy plugin");
-    db_connection();
+    
 
     // Find application (Gy)
     struct dict_object *app = NULL;
@@ -130,5 +218,5 @@ int fd_ext_init(void)
 // unload
 void fd_ext_fini(void)
 {
-    TRACE_DEBUG(INFO, "Unloading Gy plugin");
+    TRACE_DEBUG(INFO, "Unloading Gy plugin");   
 }
