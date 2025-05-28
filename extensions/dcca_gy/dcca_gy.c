@@ -246,8 +246,9 @@ int fd_ext_init(void)
 {
     TRACE_DEBUG(INFO, "Initializing Gy plugin");
 
+    const char *gy_application_id = getenv("GY_APPLICATION_ID");
     // Find application (Gy)
-    struct dict_object *app = NULL;
+    struct dict_object *app = gy_application_id ? 16777238 : 16777238; // Default to Gy application ID if not set
     struct dict_application_data data = {DCCA_APPLICATION_ID, "DCCA"};
 
     TRACE_DEBUG(INFO, "Checking Application");

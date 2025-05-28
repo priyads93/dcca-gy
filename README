@@ -72,6 +72,7 @@ docker build -t diameter:v1 .
 2. DB_USER <PostgreSQL User Name>
 3. HOST <PostgreSQL Host Name>
 4. PORT <PostgreSQL Port Name>
+5. GY_APPLICATION_ID <Gy Application Id. Sample: 16777238>
 
 
 - Run the container using the following command
