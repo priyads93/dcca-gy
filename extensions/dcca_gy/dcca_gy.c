@@ -151,7 +151,7 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
     char query[512];
 
     PGconn *conn;
-    PGresult *response;
+    json_object *response;
     conn = db_connection();
     if (!conn)
     {
@@ -176,11 +176,11 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
         return ENOENT;
     }
 
-    if (cc_request_type == 4) //Event-Based
+    if (cc_request_type == 4) // Event-Based
     {
         // Get Requested-Action AVP
-        requested_action = extractRequestAction(*msg); //TODO FIX THE AVP PARSING
-        //requested_action = (uint32_t)2;
+        requested_action = extractRequestAction(*msg); // TODO FIX THE AVP PARSING
+        // requested_action = (uint32_t)2;
         if (requested_action == (uint32_t)-1)
         {
             TRACE_DEBUG(INFO, "Requested Action is invalid");
@@ -188,7 +188,7 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
         }
         switch (requested_action)
         {
-        case 2: //CHECK_BALANCE
+        case 2: // CHECK_BALANCE
             // Fetch balance for the given subscriptionId and set result value 0=ENOUGH_CREDIT 1=NO_CREDIT
             snprintf(query, sizeof(query),
                      "SELECT * FROM account_details where subscriberid='%s';",
@@ -223,7 +223,7 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
             CHECK_FCT_DO(fd_msg_avp_new(dict_avp_cbr, 0, &avp_chk_balance_result), {TRACE_DEBUG(INFO, "Failed to create Check Balance Result AVP")});
             CHECK_FCT(fd_msg_avp_setvalue(avp_chk_balance_result, &val));
 
-            //TBC - Create a new AVP Granted Service Unit to send actual balance
+            // TBC - Create a new AVP Granted Service Unit to send actual balance
 
             break;
 
@@ -259,7 +259,8 @@ int fd_ext_init(void)
 
     const char *gy_application_id = getenv("GY_APPLICATION_ID");
     // Find application (Gy)
-    struct dict_object *app = gy_application_id ? 16777238 : 16777238; // Default to Gy application ID if not set
+    struct dict_object *app = gy_application_id ? gy_application_id : (struct dict_object *)16777238; // Default to Gy application ID if not set
+
     struct dict_application_data data = {DCCA_APPLICATION_ID, "DCCA"};
 
     TRACE_DEBUG(INFO, "Checking Application");
@@ -297,10 +298,10 @@ void fd_ext_fini(void)
     TRACE_DEBUG(INFO, "Unloading Gy plugin");
 }
 
-//Function to look up for AVPs in the Dictionary
+// Function to look up for AVPs in the Dictionary
 static int dictionary_lookup(void)
 {
-    //Result-Code AVP
+    // Result-Code AVP
     CHECK_FCT_DO(fd_dict_search(fd_g_config->cnf_dict,
                                 DICT_AVP,
                                 AVP_BY_NAME,
@@ -359,7 +360,7 @@ static int dictionary_lookup(void)
                      return ENOENT;
                  });
 
-    //Check-Balance-Result
+    // Check-Balance-Result
     CHECK_FCT_DO(fd_dict_search(fd_g_config->cnf_dict,
                                 DICT_AVP,
                                 AVP_BY_NAME,
@@ -399,12 +400,12 @@ static char *extractSubscriptionId(struct msg *ccr)
         {
             CHECK_FCT_DO(fd_msg_avp_hdr(avp_child, &ahdr), return NULL);
 
-            if (ahdr->avp_code == 450) //Subscription-Id-Type
+            if (ahdr->avp_code == 450) // Subscription-Id-Type
             {
                 sub_id_type = ahdr->avp_value->i32;
                 TRACE_DEBUG(INFO, "Subscription-Id-Type: %d", sub_id_type);
             }
-            else if (ahdr->avp_code == 444) //Subscription-Id-Data
+            else if (ahdr->avp_code == 444) // Subscription-Id-Data
             {
                 sub_id_data = (char *)ahdr->avp_value->os.data;
                 TRACE_DEBUG(INFO, "Subscription-Id-Data: %s", sub_id_data);
