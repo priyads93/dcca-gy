@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: freediameter-service
+spec:
+  selector:
+    app: freediameter
+  ports:
+    - protocol: TCP
+      port: 5868
+      targetPort: 5868
+  type: NodePort  # Or ClusterIP depending on access requirements

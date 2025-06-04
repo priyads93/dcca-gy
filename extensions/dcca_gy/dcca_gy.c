@@ -1,6 +1,5 @@
 #include <freeDiameter/extension.h>
 #include <freeDiameter/libfdproto.h>
-#include <libpq-fe.h>
 #include <json-c/json.h>
 
 #define DCCA_APPLICATION_ID 4
@@ -20,115 +19,9 @@ static int extractRequestType(struct msg *msg);
 static int extractRequestAction(struct msg *msg);
 static float get_float_from_json(json_object *parent, const char *key, float default_value);
 
-static json_object *pgresult_to_json(PGresult *res)
-{
-    if (!res)
-        return NULL;
 
-    int nrows = PQntuples(res);
-    int nfields = PQnfields(res);
 
-    json_object *jarray = json_object_new_array();
 
-    for (int i = 0; i < nrows; i++)
-    {
-        json_object *jobj = json_object_new_object();
-        for (int j = 0; j < nfields; j++)
-        {
-            const char *col_name = PQfname(res, j);
-            const char *value = PQgetvalue(res, i, j);
-
-            if (PQgetisnull(res, i, j))
-            {
-                json_object_object_add(jobj, col_name, NULL);
-            }
-            else
-            {
-                json_object *jvalue = json_object_new_string(value);
-                json_object_object_add(jobj, col_name, jvalue);
-            }
-        }
-
-        json_object_array_add(jarray, jobj);
-    }
-    printf("Converted PGresult to JSON successfully\n");
-
-    return jarray;
-}
-
-static json_object *run_query(PGconn *conn, const char *query)
-{
-
-    // Submit the query and retrieve the result
-    PGresult *res = PQexec(conn, query);
-
-    // Check the status of the query result
-    ExecStatusType resStatus = PQresultStatus(res);
-
-    // Convert the status to a string and print it
-    printf("Query Status: %s\n", PQresStatus(resStatus));
-
-    // Check if the query execution was successful
-    if (resStatus != PGRES_TUPLES_OK)
-    {
-        // If not successful, print the error message and finish the connection
-        printf("Error while executing the query: %s\n", PQerrorMessage(conn));
-        PQclear(res);
-        return NULL;
-    }
-
-    // We have successfully executed the query
-    printf("Query Executed Successfully\n");
-
-    // Convert the result to JSON
-    json_object *jarray = pgresult_to_json(res);
-    if (res)
-    {
-        PQclear(res);
-    }
-    return jarray;
-}
-
-static PGconn *db_connection()
-{
-    const char *host = getenv("HOST");
-    const char *port = getenv("PORT");
-    const char *dbUser = getenv("DB_USER");
-    const char *dbName = getenv("DB_NAME");
-
-    if (!host || !port || !dbUser || !dbName)
-    {
-        fprintf(stderr, "One or more required PostgreSQL environment variables are not set.\n");
-    }
-
-    // Connect to the database
-    // conninfo is a string of keywords and values separated by spaces.
-    char conninfo[512];
-    snprintf(conninfo, sizeof(conninfo),
-             "host=%s port=%s user=%s dbname=%s",
-             host, port, dbUser, dbName);
-
-    // Create a connection
-    PGconn *conn = PQconnectdb(conninfo);
-
-    // Check if the connection is successful
-    if (!conn || PQstatus(conn) != CONNECTION_OK)
-    {
-        // If not successful, print the error message and finish the connection
-        fprintf(stderr, "Error while connecting to the database server: %s\n", conn ? PQerrorMessage(conn) : "Connection object is NULL");
-
-        // Free the connection object if it exists
-        if (conn)
-        {
-            PQfinish(conn);
-        }
-
-        // Exit the program
-        return NULL;
-    }
-
-    return conn;
-}
 
 // Handler for CCR
 static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
@@ -148,17 +41,8 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
     char *subscription_id = NULL;
     float account_balance = 0.0f;
     float threshold_balance = 0.0f;
-    char query[512];
 
-    PGconn *conn;
-    json_object *response;
-    conn = db_connection();
-    if (!conn)
-    {
-        TRACE_DEBUG(INFO, "Database connection failed");
-        return -1; // Handle connection failure gracefully
-    }
-    TRACE_DEBUG(INFO, "Database connection established successfully");
+   
 
     // Fetch subscription Id from CCR
     subscription_id = extractSubscriptionId(*msg);
@@ -190,34 +74,7 @@ static int ccr_handler(struct msg **msg, struct avp *avp, struct session *sess,
         {
         case 2: // CHECK_BALANCE
             // Fetch balance for the given subscriptionId and set result value 0=ENOUGH_CREDIT 1=NO_CREDIT
-            snprintf(query, sizeof(query),
-                     "SELECT * FROM account_details where subscriberid='%s';",
-                     subscription_id); // Replace with actual subscriber ID extraction logic
-            response = run_query(conn, query);
-            if (response)
-            {
-                printf("Query Result: %s\n", json_object_to_json_string(response));
-                json_object *subscriber_record = json_object_array_get_idx(response, 0);
-                if (subscriber_record == NULL || !json_object_is_type(subscriber_record, json_type_object))
-                {
-                    TRACE_DEBUG(INFO, "Error: No subscriber record found.\n");
-                }
-                else
-                {
-                    account_balance = get_float_from_json(subscriber_record, "u_current_balance", 0.0f);
-                    threshold_balance = get_float_from_json(subscriber_record, "u_thresholds", 0.0f);
-                }
-                json_object_put(response); // Free the JSON object after use
-            }
-            else
-            {
-                printf("No results found or query execution failed.\n");
-            }
-
-            if (conn)
-            {
-                PQfinish(conn);
-            }
+            
             int chk_balance_result = (account_balance > threshold_balance) ? 0 : 1;
             val.i32 = chk_balance_result;
             CHECK_FCT_DO(fd_msg_avp_new(dict_avp_cbr, 0, &avp_chk_balance_result), {TRACE_DEBUG(INFO, "Failed to create Check Balance Result AVP")});

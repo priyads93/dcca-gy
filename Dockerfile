@@ -19,13 +19,13 @@ RUN ls -l ../ && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 RUN make -j$(nproc)
 RUN make install
 
-COPY certs/ /etc/ssl/certs/
+COPY aws_certs/ /etc/ssl/certs/
 
 RUN rm -f /root/extensions/dcca_gy/dcca_gy.so
 
 WORKDIR /root/extensions/dcca_gy
 
-RUN gcc -Wall -fPIC -shared -g -o dcca_gy.so dcca_gy.c $(pkg-config --cflags --libs freediameter) -I "/usr/include/postgresql" -L "/usr/lib/aarch64-linux-gnu" -lpq -ljson-c
+RUN gcc -Wall -fPIC -shared -g -o dcca_gy.so dcca_gy.c $(pkg-config --cflags --libs freediameter) -ljson-c
 
 WORKDIR /root
 RUN mkdir -p /etc/freeDiameter

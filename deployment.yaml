@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freediameter-deployment
+  namespace: diameter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freediameter
+  template:
+    metadata:
+      labels:
+        app: freediameter
+    spec:
+      initContainers:
+        - name: wait-for-config
+          image: busybox
+          command: ["sh", "-c", "while [ ! -f /etc/freediameter/freeDiameter.conf ]; do echo 'Waiting for ConfigMap...'; sleep 2; done"]
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/freediameter
+      containers:
+        - name: freediameter
+          image: 519139470698.dkr.ecr.ap-southeast-2.amazonaws.com/diameterimage
+          env:          
+            - name: GY_APPLICATION_ID
+              value: "16777238"
+          ports:
+            - containerPort: 5868  # Diameter port
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/freediameter
+      volumes:
+        - name: config-volume
+          configMap:
+            name: freediameter-config
