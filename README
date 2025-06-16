@@ -38,19 +38,13 @@ Ensure you have the following installed:
 
 # Certitifcate creation
 
-- Create self signed certificates with the domain name same as the identity name in free diameter.conf file using the following command.
-
-```
-sudo openssl req -x509 -newkey rsa:2048 \
-  -keyout <certificatekeyoutlocation>/key.pem \
-  -out  <certificateoutlocation>/cert.pem \
-  -days 365 -nodes \
-  -subj "/CN=<identity_name>"
-```
+- Create certificates from AWS Certificate manager using AWS private certificate authourity with the domain name same as the identity name in free diameter.conf file.
 
 - Add the key and certificate locations in freeDiameter.conf file.
 
-# To build the docker file:
+- Refer this documentation for detailed steps https://docs.google.com/document/d/1GpNq4PKzt852efdc9B0hu7Tz9ht0nG8oHtaRlBY-ljU/edit?tab=t.0
+
+# To create free diameter configuration:
 
 - Once the certificates are created, we can add the following parameters in freeDiamater.conf file
 
@@ -58,25 +52,82 @@ Realm=<realm_name>
 ListenOn=<server_ip>
 ConnectPeer=<client_identity>
 
-- We can now build the docker file using the following command 
 
-```
-docker build -t diameter:v1 .
-```
-
-# To run the docker container:
+# To add environment variables to the docker container:
 
 - Create .env file and add the following environment variables,
 
-1. DB_NAME <PostgreSQL DB Name>
-2. DB_USER <PostgreSQL User Name>
-3. HOST <PostgreSQL Host Name>
-4. PORT <PostgreSQL Port Name>
-5. GY_APPLICATION_ID <Gy Application Id. Sample: 16777238>
+1. GY_APPLICATION_ID <Gy Application Id. Sample: 16777238>
 
+# To push them into ECR container registry
 
-- Run the container using the following command
+1. Create AWS profile with access key and secret access key
+
+2. Export AWS profile using the following command in integrated terminal.
+``` 
+export AWS_PROFILE=<profile-name>
+```
+
+3. Login to the ECR container registry using the following command
 
 ```
-docker run -p 3868:3868 -p 5868:5868 --env-file .env --rm diameter:v1
+aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin <arn for the ECR registry>
 ```
+
+- We can now build the docker file using the following command and it will automatically push the image to the ECR
+
+```
+docker buildx build \
+ --platform linux/amd64 \
+ -t 519139470698.dkr.ecr.ap-southeast-1.amazonaws.com/diameterimage:latest \
+ --push .
+```
+
+# To create deployments in kubectl
+
+1. Once the image is pushed into ECR, we can then update out kubectl configuration using the following command.
+
+```
+aws eks update-kubeconfig --region ap-southeast-1 --name <name of eks cluster>
+```
+
+2. Create the namespace in EKS by using the following command
+
+```
+kubectl apply -f namespace.yaml
+```
+
+3. Create the config map in EKS using the following command
+
+```
+kubectl create configmap freediameter-config \
+  --from-file=freeDiameter.conf=./freeDiameter.conf \
+  -n diameter
+```
+4. Create the envoy container config map for exposing the freediameter server to external communication as TCS proxy using following command
+
+```
+kubectl apply -f envoy.yaml
+```
+
+5. Create the deployment in EKS using the following command
+
+```
+ kubectl apply -f deployment.yaml
+```
+
+6. We can check out the pod creation status using the following command,
+
+
+```
+ kubectl get pods --namespace=diameter
+```
+
+7. We have to expose the free diameter service using the envoy with following command,
+
+```
+kubectl apply -f service.yaml
+```
+
+
+

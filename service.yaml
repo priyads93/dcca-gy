@@ -1,12 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: freediameter-service
+  name: freediameter-envoy
+  namespace: ubm-diameter
 spec:
+  type: LoadBalancer
+  ports:
+    - port: 15868
+      targetPort: 15868
+      protocol: TCP
   selector:
     app: freediameter
-  ports:
-    - protocol: TCP
-      port: 5868
-      targetPort: 5868
-  type: NodePort  # Or ClusterIP depending on access requirements

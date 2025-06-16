@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: freediameter-deployment
-  namespace: diameter
+  namespace: ubm-diameter
 spec:
   replicas: 1
   selector:
@@ -22,7 +22,7 @@ spec:
               mountPath: /etc/freediameter
       containers:
         - name: freediameter
-          image: 519139470698.dkr.ecr.ap-southeast-2.amazonaws.com/diameterimage
+          image: 519139470698.dkr.ecr.ap-southeast-1.amazonaws.com/diameterimage
           env:          
             - name: GY_APPLICATION_ID
               value: "16777238"
@@ -31,7 +31,19 @@ spec:
           volumeMounts:
             - name: config-volume
               mountPath: /etc/freediameter
+        - name: envoy
+          image: envoyproxy/envoy:v1.29-latest
+          ports:
+            - containerPort: 15868
+            - containerPort: 9901  # optional admin port
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+          
       volumes:
         - name: config-volume
           configMap:
             name: freediameter-config
+        - name: envoy-config
+          configMap:
+            name: envoy-config    
